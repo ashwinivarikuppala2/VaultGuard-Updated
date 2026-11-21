@@ -6,7 +6,7 @@ const API_BASE_URL = configuredApiUrl
   ? configuredApiUrl.replace(/\/$/, '').endsWith('/api/v1')
     ? configuredApiUrl.replace(/\/$/, '')
     : `${configuredApiUrl.replace(/\/$/, '')}/api/v1`
-  : '/api/v1';
+  : 'https://vaultguard-backend-f3kt.onrender.com/api/v1';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
