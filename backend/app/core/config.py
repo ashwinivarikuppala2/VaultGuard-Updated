@@ -1,5 +1,8 @@
+import json
 from typing import List, Union
-from pydantic import AnyHttpUrl, field_validator, model_validator
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,6 +36,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://vaultguard-5vs4.onrender.com",
     ]
 
     @model_validator(mode="after")
@@ -45,11 +49,46 @@ class Settings(BaseSettings):
     @field_validator("BACKEND_CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        if isinstance(v, str) and not v.startswith("["):
-            return [i.strip() for i in v.split(",")]
-        elif isinstance(v, list):
+        if isinstance(v, str):
+            value = v.strip()
+            if value.startswith("["):
+                try:
+                    parsed = json.loads(value)
+                    if isinstance(parsed, list):
+                        v = parsed
+                    else:
+                        v = []
+                except json.JSONDecodeError:
+                    v = []
+            else:
+                v = [item.strip() for item in value.split(",") if item.strip()]
+
+        if not isinstance(v, list):
+            return []
+        return list(dict.fromkeys(str(item).strip().rstrip("/") for item in v if str(item).strip()))
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def normalize_database_url(cls, v: str) -> str:
+        if not isinstance(v, str) or not v.strip():
             return v
-        return []
+        url = v.strip()
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
+        if url.startswith("postgresql://"):
+            url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+
+        if url.startswith("postgresql+asyncpg://"):
+            parsed = urlsplit(url)
+            query = [
+                (key, value)
+                for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                if key.lower() not in ("sslmode", "ssl")
+            ]
+            url = urlunsplit(
+                (parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment)
+            )
+        return url
 
     # Database
     POSTGRES_HOST: str = "postgres"

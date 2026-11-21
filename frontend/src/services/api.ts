@@ -1,7 +1,12 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { ApiResponse, AuthTokens } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
+const configuredApiUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+const API_BASE_URL = configuredApiUrl
+  ? configuredApiUrl.replace(/\/$/, '').endsWith('/api/v1')
+    ? configuredApiUrl.replace(/\/$/, '')
+    : `${configuredApiUrl.replace(/\/$/, '')}/api/v1`
+  : '/api/v1';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,

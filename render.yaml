@@ -1,0 +1,141 @@
+services:
+  - type: web
+    name: vaultguard-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /docs
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+      - key: BACKEND_CORS_ORIGINS
+        value: '["https://vaultguard-5vs4.onrender.com","http://localhost:3000","http://localhost:5173"]'
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: REDIS_URL
+        fromService:
+          name: vaultguard-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: vaultguard-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: vaultguard-redis
+          type: redis
+          property: connectionString
+      - key: MINIO_ENDPOINT
+        value: vaultguard-minio:9000
+      - key: MINIO_ROOT_USER
+        sync: false
+      - key: MINIO_ROOT_PASSWORD
+        sync: false
+      - key: MINIO_BUCKET_NAME
+        value: vaultguard-storage
+      - key: MINIO_SECURE
+        value: false
+      - key: CLAMAV_HOST
+        value: vaultguard-clamav
+      - key: CLAMAV_PORT
+        value: 3310
+      - key: CLAMAV_TIMEOUT_SECONDS
+        value: 300
+      - key: MAX_UPLOAD_SIZE_MB
+        value: 500
+
+  - type: worker
+    name: vaultguard-celery-worker
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: REDIS_URL
+        fromService:
+          name: vaultguard-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          name: vaultguard-redis
+          type: redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          name: vaultguard-redis
+          type: redis
+          property: connectionString
+      - key: MINIO_ENDPOINT
+        value: vaultguard-minio:9000
+      - key: MINIO_ROOT_USER
+        sync: false
+      - key: MINIO_ROOT_PASSWORD
+        sync: false
+      - key: MINIO_BUCKET_NAME
+        value: vaultguard-storage
+      - key: MINIO_SECURE
+        value: false
+      - key: CLAMAV_HOST
+        value: vaultguard-clamav
+      - key: CLAMAV_PORT
+        value: 3310
+      - key: CLAMAV_TIMEOUT_SECONDS
+        value: 300
+
+  - type: redis
+    name: vaultguard-redis
+    ipAllowList: []
+
+  - type: pserv
+    name: vaultguard-clamav
+    runtime: docker
+    image:
+      url: clamav/clamav:1.4_base
+    envVars:
+      - key: CLAMD_STARTUP_TIMEOUT
+        value: 1800
+      - key: FRESHCLAM_CHECKS
+        value: 24
+      - key: CLAMD_CONF_StreamMaxLength
+        value: 512M
+      - key: CLAMD_CONF_MaxFileSize
+        value: 512M
+      - key: CLAMD_CONF_MaxScanSize
+        value: 1G
+      - key: CLAMD_CONF_ReadTimeout
+        value: 300
+      - key: CLAMD_CONF_CommandReadTimeout
+        value: 300
+    disk:
+      name: clamav-definitions
+      mountPath: /var/lib/clamav
+      sizeGB: 5
+
+  - type: pserv
+    name: vaultguard-minio
+    runtime: docker
+    image:
+      url: minio/minio:latest
+    dockerCommand: server /data --console-address ":9001"
+    envVars:
+      - key: MINIO_ROOT_USER
+        sync: false
+      - key: MINIO_ROOT_PASSWORD
+        sync: false
+    disk:
+      name: minio-data
+      mountPath: /data
+      sizeGB: 20

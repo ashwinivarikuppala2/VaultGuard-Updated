@@ -25,6 +25,8 @@ else:
         "pool_size": 20,
         "max_overflow": 10,
     })
+    if settings.ENVIRONMENT.lower() not in ("development", "test"):
+        engine_kwargs["connect_args"] = {"ssl": "require"}
 
 engine = create_async_engine(db_url, **engine_kwargs)
 
