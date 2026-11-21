@@ -101,7 +101,7 @@ services:
 
   - type: pserv
     name: vaultguard-clamav
-    runtime: docker
+    runtime: image
     image:
       url: clamav/clamav:1.4_base
     envVars:
@@ -126,9 +126,9 @@ services:
 
   - type: pserv
     name: vaultguard-minio
-    runtime: docker
+    runtime: image
     image:
-      url: minio/minio:latest
+      url: quay.io/minio/minio:latest
     dockerCommand: server /data --console-address ":9001"
     envVars:
       - key: MINIO_ROOT_USER
