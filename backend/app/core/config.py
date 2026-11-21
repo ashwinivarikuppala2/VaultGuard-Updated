@@ -32,12 +32,32 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # CORS
-    BACKEND_CORS_ORIGINS: List[str] = [
+    BACKEND_CORS_ORIGINS: Union[str, List[str]] = [
         "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "https://vaultguard-5vs4.onrender.com",
     ]
+
+    @model_validator(mode="after")
+    def _normalize_cors_origins(self):
+        value = self.BACKEND_CORS_ORIGINS
+        if isinstance(value, str):
+            value = value.strip()
+            if value.startswith("["):
+                try:
+                    parsed = json.loads(value)
+                    value = parsed if isinstance(parsed, list) else []
+                except json.JSONDecodeError:
+                    value = []
+            else:
+                value = [item.strip() for item in value.split(",") if item.strip()]
+        if not isinstance(value, list):
+            value = []
+        self.BACKEND_CORS_ORIGINS = list(
+            dict.fromkeys(str(item).strip().rstrip("/") for item in value if str(item).strip())
+        )
+        return self
 
     @model_validator(mode="after")
     def _reject_default_secret_outside_development(self):
