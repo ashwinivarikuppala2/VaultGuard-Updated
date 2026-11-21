@@ -5,6 +5,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
+from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -62,6 +63,13 @@ async def run_async_migrations() -> None:
     )
 
     async with connectable.connect() as connection:
+        await connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS alembic_version "
+                "ALTER COLUMN version_num TYPE VARCHAR(128)"
+            )
+        )
+        await connection.commit()
         await connection.run_sync(do_run_migrations)
 
     await connectable.dispose()
