@@ -1,0 +1,180 @@
+version: '3.8'
+
+services:
+  # Relational Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: vaultguard_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vaultguard_db}
+      POSTGRES_USER: ${POSTGRES_USER:-vaultguard_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vaultguard_secure_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vaultguard_user} -d ${POSTGRES_DB:-vaultguard_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vaultguard_net
+
+  # High-Speed In-Memory Cache & Broker
+  redis:
+    image: redis:7-alpine
+    container_name: vaultguard_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vaultguard_net
+
+  # S3-Compatible Object Storage
+  minio:
+    image: elestio/minio:latest
+    container_name: vaultguard_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadminpassword}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - vaultguard_net
+
+  # ClamAV daemon; the persistent database is initialized and refreshed by FreshClam.
+  clamav:
+    image: clamav/clamav:1.4_base
+    container_name: vaultguard_clamav
+    restart: unless-stopped
+    environment:
+      CLAMD_STARTUP_TIMEOUT: 1800
+      FRESHCLAM_CHECKS: 24
+      CLAMD_CONF_StreamMaxLength: 512M
+      CLAMD_CONF_MaxFileSize: 512M
+      CLAMD_CONF_MaxScanSize: 1G
+      CLAMD_CONF_ReadTimeout: 300
+      CLAMD_CONF_CommandReadTimeout: 300
+    expose:
+      - "3310"
+    volumes:
+      - clamav_db:/var/lib/clamav
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - clamdscan --config-file=/etc/clamav/clamd.conf --ping=1:5 && clamdscan --config-file=/etc/clamav/clamd.conf --no-summary /etc/hostname >/dev/null 2>&1
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 30m
+    networks:
+      - vaultguard_net
+
+  # FastAPI Core Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vaultguard_backend
+    restart: unless-stopped
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    environment:
+      - ENVIRONMENT=development
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-vaultguard_user}:${POSTGRES_PASSWORD:-vaultguard_secure_password}@postgres:5432/${POSTGRES_DB:-vaultguard_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadminpassword}
+      - MINIO_BUCKET_NAME=vaultguard-storage
+      - MINIO_SECURE=false
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
+      - CLAMAV_TIMEOUT_SECONDS=300
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY in the .env file before starting the stack}
+      - BACKEND_CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","http://127.0.0.1:5173"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      clamav:
+        condition: service_healthy
+    networks:
+      - vaultguard_net
+
+  # Celery Asynchronous Task Worker
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vaultguard_celery_worker
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-vaultguard_user}:${POSTGRES_PASSWORD:-vaultguard_secure_password}@postgres:5432/${POSTGRES_DB:-vaultguard_db}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/2
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
+      - CLAMAV_TIMEOUT_SECONDS=300
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+      clamav:
+        condition: service_healthy
+    networks:
+      - vaultguard_net
+
+  # React 18 + Vite Production Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vaultguard_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - vaultguard_net
+
+volumes:
+  pgdata:
+  redis_data:
+  minio_data:
+  clamav_db:
+
+networks:
+  vaultguard_net:
+    driver: bridge
+

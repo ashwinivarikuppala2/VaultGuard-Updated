@@ -1,0 +1,106 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+venv/
+.venv/
+ENV/
+
+# Node & Frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# MinIO / Docker local data
+minio_data/
+pgdata/
+redis_data/
+# Local backup/recovery files
+local_storage/
+recovered_files/
+
+# Zip files
+*.zip
+# Additional database exclusions
+*.db
+*.sqlite
+*.sqlite3
+
+# Additional Python cache and test files
+.mypy_cache/
+.ruff_cache/
+.coverage.*
+.tox/
+
+# Debug and temporary test files
+debug_test*.py
+test_*.db
+
+# Log files
+*.log
+@"
+
+# VaultGuard local and sensitive files
+backend/vaultguard.db
+backend/test_vaultguard.db
+backend/ransomware.py
+backend/debug_test*.py
+*.db
+*.sqlite
+*.sqlite3
+.env*
+!.env.example
+local_storage/
+recovered_files/
+minio_data/
+pgdata/
+redis_data/
+"@ | Add-Content .gitignore
+
+# Local-only files
+backend/ransomware.py
+backend/start.sh
+ersAshwini*

@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#06090e] text-slate-100;
+  }
+}
+
+/* Custom dark cybersecurity glow styles */
+.cyber-card {
+  @apply bg-[#090e17]/80 backdrop-blur-md border border-slate-800/80 rounded-xl shadow-xl transition-all duration-200;
+}
+
+.cyber-card-interactive {
+  @apply cyber-card hover:border-cyan-500/40 hover:shadow-cyan-950/20;
+}
+
+.cyber-glow-cyan {
+  text-shadow: 0 0 12px rgba(6, 182, 212, 0.4);
+}
+
+.cyber-glow-emerald {
+  text-shadow: 0 0 12px rgba(16, 185, 129, 0.4);
+}
+
+/* Custom dark scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #090e17;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #06b6d4;
+}
+
