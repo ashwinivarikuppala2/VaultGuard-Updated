@@ -1,5 +1,5 @@
 import json
-from typing import List, Union
+from typing import List, Optional, Union
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import field_validator, model_validator
@@ -134,6 +134,8 @@ class Settings(BaseSettings):
     MINIO_ROOT_PASSWORD: str = "minioadminpassword"
     MINIO_BUCKET_NAME: str = "vaultguard-storage"
     MINIO_SECURE: bool = False
+    LOCAL_STORAGE_ENABLED: Optional[bool] = None
+    LOCAL_STORAGE_PATH: str = "local_storage"
 
     # ClamAV daemon connection used by the mandatory pre-backup scanner.
     CLAMAV_HOST: str = "clamav"
@@ -147,8 +149,14 @@ class Settings(BaseSettings):
 
     # Seed Admin
     FIRST_SUPER_ADMIN_EMAIL: str = "admin@vaultguard.internal"
-    FIRST_SUPER_ADMIN_PASSWORD: str = "AdminSecurePassword123!"
+    FIRST_SUPER_ADMIN_PASSWORD: Optional[str] = None
     FIRST_SUPER_ADMIN_NAME: str = "System Super Administrator"
+
+    @model_validator(mode="after")
+    def _set_local_storage_default(self):
+        if self.LOCAL_STORAGE_ENABLED is None:
+            self.LOCAL_STORAGE_ENABLED = self.ENVIRONMENT.lower() in ("development", "test")
+        return self
 
 
 settings = Settings()

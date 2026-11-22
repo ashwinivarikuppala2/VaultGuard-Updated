@@ -30,7 +30,7 @@ async def test_auth_workflow(client: AsyncClient):
     me_data = me_res.json()
     assert me_data["success"] is True
     assert me_data["data"]["email"] == "corp_admin@acmesec.com"
-    assert me_data["data"]["role"]["name"] == "ORG_ADMIN"
+    assert me_data["data"]["role"]["name"] == "ADMIN"
 
     # 3. Login
     login_payload = {

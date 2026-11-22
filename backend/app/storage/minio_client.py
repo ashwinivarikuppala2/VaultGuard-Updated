@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path, PurePosixPath
 from typing import Optional, Tuple
 
 try:
@@ -12,6 +13,7 @@ except ImportError:
     HAS_MINIO = False
 
 from app.core.config import settings
+from app.core.exceptions import StorageUnavailableException
 
 logger = logging.getLogger("vaultguard.storage")
 
@@ -24,6 +26,34 @@ class MinIOClient:
         self.secure = settings.MINIO_SECURE
         self.bucket_name = settings.MINIO_BUCKET_NAME
         self._client: Optional[Minio] = None
+
+    def _local_object_path(self, root: Path, clean_path: str) -> Path:
+        relative = PurePosixPath(clean_path.replace("\\", "/"))
+        if relative.is_absolute() or not relative.parts or any(part in (".", "..") for part in relative.parts):
+            raise ValueError("Invalid local storage object path.")
+
+        bucket_root = (root.expanduser().resolve() / self.bucket_name).resolve()
+        target = bucket_root.joinpath(*relative.parts).resolve()
+        if bucket_root not in target.parents:
+            raise ValueError("Local storage object path escapes its configured root.")
+        return target
+
+    def _local_roots(self) -> list[Path]:
+        backend_dir = Path(__file__).resolve().parents[2]
+        roots = [
+            Path(settings.LOCAL_STORAGE_PATH),
+            Path.cwd() / "local_storage",
+            backend_dir / "local_storage",
+            backend_dir.parent / "local_storage",
+        ]
+        unique_roots = []
+        seen = set()
+        for root in roots:
+            resolved = root.expanduser().resolve()
+            if resolved not in seen:
+                unique_roots.append(resolved)
+                seen.add(resolved)
+        return unique_roots
 
     @property
     def is_available(self) -> bool:
@@ -99,7 +129,7 @@ class MinIOClient:
         data: bytes,
         content_type: str = "application/octet-stream",
     ) -> str:
-        """Upload encrypted payload to MinIO with local fallback for offline/development."""
+        """Store encrypted data in MinIO or explicitly enabled local demo storage."""
         clean_path = object_path
         if clean_path.startswith(f"{self.bucket_name}/"):
             clean_path = clean_path[len(self.bucket_name) + 1:]
@@ -117,20 +147,26 @@ class MinIOClient:
                 )
                 logger.info(f"Uploaded {len(data)} bytes to MinIO: '{self.bucket_name}/{clean_path}'")
                 return f"{self.bucket_name}/{clean_path}"
-            except Exception as e:
-                logger.warning(f"MinIO upload error ({str(e)}), persisting to local storage fallback.")
+            except Exception as exc:
+                if not settings.LOCAL_STORAGE_ENABLED:
+                    raise StorageUnavailableException(
+                        "MinIO upload failed and local demo storage is disabled."
+                    ) from exc
+                logger.warning("MinIO upload failed; using explicitly enabled local demo storage.")
+        elif not settings.LOCAL_STORAGE_ENABLED:
+            raise StorageUnavailableException(
+                "MinIO is unavailable and local demo storage is disabled."
+            )
 
-        # Local storage fallback for standalone development / offline testing
-        local_dir = os.path.join("local_storage", self.bucket_name, os.path.dirname(clean_path))
-        os.makedirs(local_dir, exist_ok=True)
-        local_file = os.path.join("local_storage", self.bucket_name, clean_path)
-        with open(local_file, "wb") as f:
+        local_file = self._local_object_path(Path(settings.LOCAL_STORAGE_PATH), clean_path)
+        local_file.parent.mkdir(parents=True, exist_ok=True)
+        with local_file.open("wb") as f:
             f.write(data)
-        logger.info(f"Persisted {len(data)} bytes to local storage: '{local_file}'")
+        logger.info("Persisted %s bytes to local demo storage.", len(data))
         return f"{self.bucket_name}/{clean_path}"
 
     def download_bytes(self, object_path: str) -> bytes:
-        """Download encrypted payload from MinIO or local fallback."""
+        """Retrieve encrypted data from MinIO or explicitly enabled local demo storage."""
         clean_path = object_path
         if clean_path.startswith(f"{self.bucket_name}/"):
             clean_path = clean_path[len(self.bucket_name) + 1:]
@@ -142,23 +178,21 @@ class MinIOClient:
                 response.close()
                 response.release_conn()
                 return data
-            except Exception as e:
-                logger.warning(f"MinIO get_object error ({str(e)}), checking local fallback.")
+            except Exception as exc:
+                if not settings.LOCAL_STORAGE_ENABLED:
+                    raise StorageUnavailableException(
+                        "MinIO download failed and local demo storage is disabled."
+                    ) from exc
+                logger.warning("MinIO download failed; checking explicitly enabled local demo storage.")
+        elif not settings.LOCAL_STORAGE_ENABLED:
+            raise StorageUnavailableException(
+                "MinIO is unavailable and local demo storage is disabled."
+            )
 
-        # Check clean path in local fallback
-        # Resolve the backend directory (parent of this file's package root)
-        _backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        _root_dir = os.path.dirname(_backend_dir) if os.path.basename(_backend_dir).lower() == "backend" else _backend_dir
-        candidates = [
-            os.path.join("local_storage", self.bucket_name, clean_path),
-            os.path.join("local_storage", self.bucket_name, object_path),
-            os.path.join(os.getcwd(), "local_storage", self.bucket_name, clean_path),
-            os.path.join(_backend_dir, "local_storage", self.bucket_name, clean_path),
-            os.path.join(_root_dir, "local_storage", self.bucket_name, clean_path),
-        ]
-        for candidate in candidates:
-            if os.path.exists(candidate) and os.path.isfile(candidate):
-                with open(candidate, "rb") as f:
+        for root in self._local_roots():
+            candidate = self._local_object_path(root, clean_path)
+            if candidate.is_file():
+                with candidate.open("rb") as f:
                     return f.read()
 
         raise FileNotFoundError(f"MinIO object missing: '{object_path}' not found in MinIO or local fallback storage.")

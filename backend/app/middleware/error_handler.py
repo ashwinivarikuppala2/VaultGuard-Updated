@@ -12,6 +12,7 @@ from app.core.exceptions import (
     FileSizeLimitException,
     InactiveOrganizationException,
     InactiveUserException,
+    StorageUnavailableException,
     TokenValidationException,
     VaultGuardException,
 )
@@ -97,6 +98,12 @@ def register_exception_handlers(app: FastAPI) -> None:
         trace_id = getattr(request.state, "trace_id", None)
         envelope = error_response(code=exc.code, message=exc.message, details=exc.details, trace_id=trace_id)
         return JSONResponse(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, content=envelope.model_dump(mode="json"))
+
+    @app.exception_handler(StorageUnavailableException)
+    async def storage_unavailable_handler(request: Request, exc: StorageUnavailableException) -> JSONResponse:
+        trace_id = getattr(request.state, "trace_id", None)
+        envelope = error_response(code=exc.code, message=exc.message, details=exc.details, trace_id=trace_id)
+        return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=envelope.model_dump(mode="json"))
 
     @app.exception_handler(VaultGuardException)
     async def domain_exception_handler(request: Request, exc: VaultGuardException) -> JSONResponse:

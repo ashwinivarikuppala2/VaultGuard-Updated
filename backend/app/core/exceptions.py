@@ -74,6 +74,11 @@ class FileSizeLimitException(VaultGuardException):
         )
 
 
+class StorageUnavailableException(VaultGuardException):
+    def __init__(self, message: str = "Backup storage is unavailable.") -> None:
+        super().__init__(message=message, code="STORAGE_UNAVAILABLE")
+
+
 class MalwareDetectedException(VaultGuardException):
     """Raised when malware scanning blocks a file from entering backup storage."""
 

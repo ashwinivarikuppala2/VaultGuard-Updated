@@ -1,5 +1,4 @@
 import logging
-import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from fastapi import FastAPI
@@ -14,7 +13,6 @@ from app.database.session import AsyncSessionLocal, engine
 from app.middleware.error_handler import register_exception_handlers
 from app.middleware.logging_middleware import RequestLoggingMiddleware
 from app.models.base import Base
-from app.models.device import Device, DeviceStatus
 from app.models.role import Role, RoleType
 from app.models.user import User
 from app.security.password import hash_password
@@ -55,18 +53,24 @@ async def init_system_defaults() -> None:
             admin_user = admin_result.scalar_one_or_none()
 
             if not admin_user:
-                admin_user = User(
-                    email=settings.FIRST_SUPER_ADMIN_EMAIL,
-                    hashed_password=hash_password(settings.FIRST_SUPER_ADMIN_PASSWORD),
-                    full_name=settings.FIRST_SUPER_ADMIN_NAME,
-                    organization_id=None,
-                    role_id=admin_role.id,
-                    is_active=True,
-                    is_verified=True,
-                )
-                session.add(admin_user)
-                await session.commit()
-                logger.info(f"System Administrator seeded: {settings.FIRST_SUPER_ADMIN_EMAIL}")
+                if not settings.FIRST_SUPER_ADMIN_PASSWORD:
+                    logger.warning(
+                        "System Administrator was not seeded: set FIRST_SUPER_ADMIN_PASSWORD "
+                        "through a secret environment variable to provision it."
+                    )
+                else:
+                    admin_user = User(
+                        email=settings.FIRST_SUPER_ADMIN_EMAIL,
+                        hashed_password=hash_password(settings.FIRST_SUPER_ADMIN_PASSWORD),
+                        full_name=settings.FIRST_SUPER_ADMIN_NAME,
+                        organization_id=None,
+                        role_id=admin_role.id,
+                        is_active=True,
+                        is_verified=True,
+                    )
+                    session.add(admin_user)
+                    await session.commit()
+                    logger.info(f"System Administrator seeded: {settings.FIRST_SUPER_ADMIN_EMAIL}")
             else:
                 logger.info("System Administrator already provisioned.")
 
@@ -120,34 +124,6 @@ async def init_system_defaults() -> None:
                 await session.commit()
                 logger.info("Default Threat Detection Heuristic Rules seeded.")
 
-            # // TEMP TEST DEVICE
-            sample_user_result = await session.execute(
-                select(User)
-                .where(User.organization_id.is_not(None))
-                .order_by(User.last_login_at.desc().nullslast())
-                .limit(1)
-            )
-            sample_user = sample_user_result.scalar_one_or_none()
-            if sample_user and sample_user.organization_id:
-                device_count_result = await session.execute(
-                    select(func.count(Device.id)).where(
-                        Device.organization_id == sample_user.organization_id
-                    )
-                )
-                if (device_count_result.scalar() or 0) == 0:
-                    session.add(
-                        Device(
-                            device_id=str(uuid.uuid4()),
-                            name="My Windows PC",
-                            os="Windows",
-                            status=DeviceStatus.ONLINE,
-                            organization_id=sample_user.organization_id,
-                            user_id=sample_user.id,
-                        )
-                    )
-                    await session.commit()
-                    logger.info("Temporary test device seeded for the most recently active organization.")
-            # // REMOVE BEFORE PRODUCTION
         except Exception as e:
             await session.rollback()
             logger.error(f"Error during system seeding: {str(e)}", exc_info=True)

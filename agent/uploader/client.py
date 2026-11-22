@@ -70,6 +70,8 @@ class VaultGuardAPIClient:
 
     def authenticate(self) -> str:
         """Authenticate with the VaultGuard backend and obtain JWT access token."""
+        if not self.config.auth_password:
+            raise RuntimeError("Set VAULTGUARD_AUTH_PASSWORD before starting the agent.")
         logger.info(f"Authenticating agent with server: {self.config.auth_email}")
         res = self.request_with_retry(
             method="POST",

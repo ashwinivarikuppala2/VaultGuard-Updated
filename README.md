@@ -193,7 +193,10 @@ cd backend
 python -m uvicorn app.main:app --reload --port 8000
 ```
 - Interactive Swagger UI: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Super Admin: `admin@vaultguard.internal` / `AdminSecurePassword123!`
+- Create a personal or organization account from the frontend registration page. No default administrator password is shipped.
+- To seed a system administrator, set `FIRST_SUPER_ADMIN_EMAIL` and `FIRST_SUPER_ADMIN_PASSWORD` in the backend environment using a unique password; never commit the password.
+
+Local development enables the encrypted local-disk storage fallback by default. Production disables it unless `LOCAL_STORAGE_ENABLED=true` is explicitly set. This mode is for temporary demos only: files on Render's free filesystem can disappear when the service restarts or redeploys. The fallback stores the encrypted backup payload and supports retrieval, but it is not durable object storage.
 
 #### 2. Frontend Web Application:
 ```powershell
@@ -232,6 +235,13 @@ Run the live-daemon integration tests after the stack is healthy:
 ```powershell
 docker compose exec -e RUN_CLAMAV_INTEGRATION_TESTS=1 backend python -m pytest --noconftest tests/test_clamav_integration.py -v
 ```
+
+Render's free deployment currently has no ClamAV service. Uploads therefore
+remain blocked with a scanner-unavailable error; do not bypass this check or
+label a file clean. For a genuine malware-scan demonstration, run the Compose
+stack locally and use the EICAR integration test above. Manual file uploads are
+processed synchronously and do not require Celery; folder-based background jobs
+require a separately configured worker.
 
 ---
 
