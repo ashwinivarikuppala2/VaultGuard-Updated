@@ -221,6 +221,10 @@ docker compose up -d --build
 * Backend API: [http://localhost:8000/docs](http://localhost:8000/docs)
 * MinIO Console: [http://localhost:9001](http://localhost:9001)
 
+The Compose frontend calls `/api/v1` on its own origin; Nginx forwards those
+requests to the local backend. This keeps local authentication and backup
+requests on the local stack instead of sending them to the public Render API.
+
 ClamAV starts with the backend, initializes its persistent signature database,
 and is updated daily by FreshClam. Its TCP port is available only on the Compose
 network. Verify service readiness and a real scan from the backend:
@@ -236,12 +240,25 @@ Run the live-daemon integration tests after the stack is healthy:
 docker compose exec -e RUN_CLAMAV_INTEGRATION_TESTS=1 backend python -m pytest --noconftest tests/test_clamav_integration.py -v
 ```
 
+Run the end-to-end API test with the real local ClamAV and MinIO services. It
+uses an isolated runner and temporary SQLite database, creates a uniquely
+named test account, and removes its exact MinIO test object when finished.
+It does not connect to or alter the Compose PostgreSQL database:
+```powershell
+docker compose run --rm --no-deps -w /tmp `
+  -e ENVIRONMENT=test `
+  -e DATABASE_URL=sqlite+aiosqlite:////tmp/vaultguard-demo-integration.db `
+  -e LOCAL_STORAGE_ENABLED=false `
+  -e RUN_VAULTGUARD_STACK_INTEGRATION_TESTS=1 `
+  backend python -m pytest -q /app/tests/test_demo_stack_integration.py
+```
+
 Render's free deployment currently has no ClamAV service. Uploads therefore
 remain blocked with a scanner-unavailable error; do not bypass this check or
 label a file clean. For a genuine malware-scan demonstration, run the Compose
 stack locally and use the EICAR integration test above. Manual file uploads are
 processed synchronously and do not require Celery; folder-based background jobs
-require a separately configured worker.
+are not currently dispatched by the API and should not be presented as working.
 
 ---
 
